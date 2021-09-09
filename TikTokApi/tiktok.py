@@ -245,35 +245,48 @@ class TikTokApi:
         query = {"verifyFp": verify_fp, "device_id": device_id, "_signature": signature}
         url = "{}&{}".format(kwargs["url"], urlencode(query))
 
-        h = requests.head(
-            url,
-            headers={"x-secsdk-csrf-version": "1.2.5", "x-secsdk-csrf-request": "1"},
-            proxies=self.__format_proxy(proxy),
-            **self.requests_extra_kwargs,
-        )
-        csrf_session_id = h.cookies["csrf_session_id"]
-        csrf_token = h.headers["X-Ware-Csrf-Token"].split(",")[1]
-        kwargs["csrf_session_id"] = csrf_session_id
+        additional_headers = dict()
+        login_required = kwargs.get("login_required")
+        if login_required == None or login_required == False:
+            h = requests.head(
+                url,
+                headers={"x-secsdk-csrf-version": "1.2.5", "x-secsdk-csrf-request": "1"},
+                proxies=self.__format_proxy(proxy),
+                **self.requests_extra_kwargs,
+            )
+            csrf_session_id = h.cookies["csrf_session_id"]
+            csrf_token = h.headers["X-Ware-Csrf-Token"].split(",")[1]
+            kwargs["csrf_session_id"] = csrf_session_id
+
+            additional_headers.update({
+                "x-secsdk-csrf-token": csrf_token,
+                "accept-encoding": "gzip, deflate, br",
+                "accept-language": "en-US,en;q=0.9",
+            })
+        else:
+            additional_headers.update({
+                "cookie": kwargs.get("cookie")
+            })
+
+        header_dict = {
+            "authority": "m.tiktok.com",
+            "method": "GET",
+            "path": url.split("tiktok.com")[1],
+            "scheme": "https",
+            "accept": "application/json, text/plain, */*",
+            "origin": referrer,
+            "referer": referrer,
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+            "sec-gpc": "1",
+            "user-agent": userAgent,
+        }
+        header_dict.update(additional_headers)
 
         r = requests.get(
             url,
-            headers={
-                "authority": "m.tiktok.com",
-                "method": "GET",
-                "path": url.split("tiktok.com")[1],
-                "scheme": "https",
-                "accept": "application/json, text/plain, */*",
-                "accept-encoding": "gzip, deflate, br",
-                "accept-language": "en-US,en;q=0.9",
-                "origin": referrer,
-                "referer": referrer,
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-                "sec-gpc": "1",
-                "user-agent": userAgent,
-                "x-secsdk-csrf-token": csrf_token,
-            },
+            headers= header_dict,
             cookies=self.get_cookies(**kwargs),
             proxies=self.__format_proxy(proxy),
             **self.requests_extra_kwargs,
@@ -1089,6 +1102,32 @@ class TikTokApi:
 
         return self.get_data(url=api_url, **kwargs)
 
+    def get_comments(
+        self,
+        headers,
+        params,
+        **kwargs
+    ) -> dict:
+
+        kwargs["login_required"] = True
+        kwargs["cookie"] = headers.get("cookie")
+        kwargs["custom_verifyFp"] = headers.get("custom_verifyFp")
+        kwargs["custom_device_id"] = headers.get("custom_device_id")
+
+        ms_token = headers.get("ms_token")
+        x_bogus = headers.get("x_bogus")
+
+        query = {
+            "cursor": params.get('cursor'),
+            "count": params.get('count'),
+            "aweme_id": params.get('id')
+        }
+        api_url = "https://www.tiktok.com/api/comment/list/?{}&{}".format(
+            self.__add_www_url_params__(ms_token, x_bogus), urlencode(query)
+        )
+
+        return self.get_data(url=api_url, **kwargs)
+
     def get_tiktok_by_url(self, url, **kwargs) -> dict:
         """Returns a dictionary of a TikTok object by url.
 
@@ -1669,6 +1708,42 @@ class TikTokApi:
             "is_fullscreen": "false",
             "history_len": random.randint(0, 30),
             "language": self.language or "en"
+        }
+        return urlencode(query)
+
+    ## Use for comment getting
+    def __add_www_url_params__(self, ms_token = "", x_bogus = "") -> str:
+        query = {
+            "aid": 1988,
+            "app_name": "tiktok_web",
+            "device_platform": "web_pc",
+            "region": "VN",
+            "priority_region": "",
+            "os": "mac",
+            "referer": "",
+            "cookie_enabled": "true",
+            "screen_width": "2560",
+            "screen_height": "1440",
+            "browser_language": "vi",
+            "browser_platform": "MacIntel",
+            "browser_name": "Mozilla",
+            "browser_version": "5.0+(Macintosh%3B+Intel+Mac+OS+X+10_15_7)+AppleWebKit%2F537.36+(KHTML,+like+Gecko)+Chrome%2F92.0,.4515.159+Safari%2F537.36",
+            "browser_online": "true",
+            "app_language": "vi",
+            "timezone_name": "Asia/Saigon",
+            "is_page_visible": "true",
+            "focus_state": "false",
+            "is_fullscreen": "false",
+            "history_len": "3",
+            "battery_info": "%7B%7D",
+            "insert_ids": "",
+            "current_region": "VN",
+            "fromWeb": "1",
+            "channel_id": "0",
+            "msToken": ms_token,
+            "X-Bogus": x_bogus,
+            # "msToken": "JrpcX8upT6ruppXEA17bMFy4Rxn8iRrF8JQGmvt8gDvAnrsB1zGHz0GrFr0IaB_Ma2PlAXgW8uk12SdfcSJ3wfOTmN3O57frVckdqbzh,HuAoeCZo0suTJ_qIv6RWfVxc8uImxLbf",
+            # "X-Bogus": "DFSzswVLtFXANafhSTYEb37TlqeS",
         }
         return urlencode(query)
 
