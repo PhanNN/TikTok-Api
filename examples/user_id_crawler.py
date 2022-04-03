@@ -7,6 +7,6 @@ api = TikTokApi.get_instance()
 
 usersToCrawl = 50
 
-userId = "6745191554350760966"  # This is therock's userId for TikTok you can change it to whereever you want to start crawling from
+userId = "6562500403404324865"  # This is therock's userId for TikTok you can change it to whereever you want to start crawling from
 
-api.get_suggested_users_by_id_crawler(startingId=userId)
+print(api.get_suggested_users_by_id_crawler(startingId=userId))

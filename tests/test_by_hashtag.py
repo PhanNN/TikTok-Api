@@ -8,7 +8,6 @@ api = TikTokApi.get_instance(
 device_id = api.generate_device_id()
 trending = api.by_trending(custom_device_id=device_id)
 
-
 def unique_count(tiktoks):
     tmp = []
     for t in tiktoks:

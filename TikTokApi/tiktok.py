@@ -255,28 +255,34 @@ class TikTokApi:
                 verifyFp=kwargs.get("custom_verifyFp", verifyFp),
             )
 
-        if not kwargs.get("send_tt_params", False):
+        if not send_tt_params:
             tt_params = None
 
         query = {"verifyFp": verify_fp, "device_id": device_id, "_signature": signature}
         url = "{}&{}".format(kwargs["url"], urlencode(query))
 
-        additional_headers = dict()
-        login_required = kwargs.get("login_required")
-        if login_required == None or login_required == False:
-            h = requests.head(
-                url,
-                headers={"x-secsdk-csrf-version": "1.2.5", "x-secsdk-csrf-request": "1"},
-                proxies=self.__format_proxy(proxy),
-                **self.requests_extra_kwargs,
-            )
+        h = requests.head(
+            url,
+            headers={"x-secsdk-csrf-version": "1.2.5", "x-secsdk-csrf-request": "1"},
+            proxies=self.__format_proxy(proxy),
+            **self.requests_extra_kwargs,
+        )
+
+        csrf_token = None
+        if "csrf_session_id" in h.cookies:
             csrf_session_id = h.cookies["csrf_session_id"]
             csrf_token = h.headers["X-Ware-Csrf-Token"].split(",")[1]
             kwargs["csrf_session_id"] = csrf_session_id
 
-            additional_headers.update({
-                "x-secsdk-csrf-token": csrf_token,
-                "accept-encoding": "gzip, deflate, br",
+        r = requests.get(
+            url,
+            headers={
+                "authority": "m.tiktok.com",
+                "method": "GET",
+                "path": url.split("tiktok.com")[1],
+                "scheme": "https",
+                "accept": "application/json, text/plain, */*",
+                # "accept-encoding": "gzip, deflate, br",
                 "accept-language": "en-US,en;q=0.9",
                 "origin": referrer,
                 "referer": referrer,
@@ -292,6 +298,7 @@ class TikTokApi:
             proxies=self.__format_proxy(proxy),
             **self.requests_extra_kwargs,
         )
+
         try:
             json = r.json()
             if (
@@ -327,6 +334,9 @@ class TikTokApi:
 
     def get_cookies(self, **kwargs):
         """Extracts cookies from the kwargs passed to the function for get_data"""
+        if kwargs.get("custom_cookies") != None:
+            return kwargs.get("custom_cookies")
+
         device_id = kwargs.get(
             "custom_device_id",
             "".join(random.choice(string.digits) for num in range(19)),
@@ -978,11 +988,44 @@ class TikTokApi:
             BASE_URL, id, self.__add_url_params__()
         )
         res = self.get_data(url=api_url, **kwargs)
-
         if res.get("statusCode", 200) == 10203:
             raise TikTokNotFoundError()
 
         return res["musicInfo"]
+
+    def hashtag_page(self, hashtag_id, count=30, offset=0, **kwargs) -> dict:
+        """Returns a dictionary listing TikToks with a specific hashtag.
+
+        ##### Parameters
+        * hashtag_id: The hashtagId to search by
+
+            Without the # symbol
+
+            A valid string is "1656565554622465" for "tiktokdancevn"
+        * count: The number of posts to return
+            Note: seems to only support up to ~2,000
+        """
+        (
+            region,
+            language,
+            proxy,
+            maxCount,
+            device_id,
+        ) = self.__process_kwargs__(kwargs)
+        kwargs["custom_device_id"] = device_id
+
+        query = {
+            "count": count,
+            "challengeID": hashtag_id,
+            "type": 3,
+            "secUid": "",
+            "cursor": offset,
+            "priority_region": "",
+        }
+        api_url = "{}api/challenge/item_list/?{}&{}".format(
+            BASE_URL, self.__add_url_params__(), urlencode(query)
+        )
+        return self.get_data(url=api_url, **kwargs)
 
     def by_hashtag(self, hashtag, count=30, offset=0, **kwargs) -> dict:
         """Returns a dictionary listing TikToks with a specific hashtag.
@@ -1151,7 +1194,7 @@ class TikTokApi:
     ) -> dict:
 
         kwargs["login_required"] = True
-        kwargs["cookie"] = headers.get("cookie")
+        kwargs["custom_cookies"] = headers.get("cookie")
         kwargs["custom_verifyFp"] = headers.get("custom_verifyFp")
         kwargs["custom_device_id"] = headers.get("custom_device_id")
 
@@ -1168,6 +1211,30 @@ class TikTokApi:
         )
 
         return self.get_data(url=api_url, **kwargs)
+
+    def get_tiktoks_by_keyword(
+        self,
+        headers,
+        params,
+        **kwargs
+    ) -> dict:
+
+        kwargs["login_required"] = True
+        kwargs["custom_cookies"] = headers.get("cookie")
+
+        ms_token = headers.get("ms_token")
+        x_bogus = headers.get("x_bogus")
+        
+        query = {
+            "keyword": params.get("keyword"),
+            "offset": params.get("offset")
+        }
+        api_url = "https://t.tiktok.com/api/search/general/full/?{}&{}".format(
+            self.__add_url_params__(), urlencode(query)
+        )
+
+        data = self.get_data(url=api_url, send_tt_params=True, **kwargs)
+        return data
 
     def get_tiktok_by_url(self, url, **kwargs) -> dict:
         """Returns a dictionary of a TikTok object by url.
@@ -1315,11 +1382,11 @@ class TikTokApi:
             "https://tiktok.com/@{}?lang=en".format(quote(username)),
             headers={
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-                "authority": "www.tiktok.com",
+                # "authority": "www.tiktok.com",
                 "path": "/@{}".format(quote(username)),
                 "Accept-Encoding": "gzip, deflate",
                 "Connection": "keep-alive",
-                "Host": "www.tiktok.com",
+                # "Host": "www.tiktok.com",
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36",
             },
             proxies=self.__format_proxy(kwargs.get("proxy", None)),
@@ -1329,8 +1396,20 @@ class TikTokApi:
 
         t = r.text
 
+        j_raw = ''
         try:
-            j_raw = self.__extract_tag_contents(r.text)
+            if ("sigi-persisted-data" in t):
+                j_raw = self.__extract_sigi_contents(r.text)
+                users = json.loads(j_raw)["UserModule"]["users"]
+                stats = json.loads(j_raw)["UserModule"]["stats"]
+
+                result = {}
+                result['userInfo'] = {}
+                result['userInfo']['user'] = users[username]
+                result['userInfo']['stat'] = stats[username]
+                return result
+            else:
+                j_raw = self.__extract_tag_contents(r.text)
         except IndexError:
             if not t:
                 logging.error("Tiktok response is empty")
@@ -1725,16 +1804,17 @@ class TikTokApi:
         # TODO: Maybe try not doing this? It should be handled by the urlencode.
         return parm.replace("/", "%2F").replace(" ", "+").replace(";", "%3B")
 
-    def __add_url_params__(self) -> str:
+    def __add_url_params__(self, ms_token = "", x_bogus = "") -> str:
         query = {
             "aid": 1988,
             "app_name": "tiktok_web",
+            "channel": "tiktok_web",
             "device_platform": "web_mobile",
             "region": self.region or "US",
             "priority_region": "",
             "os": "ios",
-            "referer": "",
-            "root_referer": "",
+            "referer": "https://www.tiktok.com/",
+            "root_referer": "https://www.tiktok.com/",
             "cookie_enabled": "true",
             "screen_width": self.width,
             "screen_height": self.height,
@@ -1743,12 +1823,17 @@ class TikTokApi:
             "browser_name": "Mozilla",
             "browser_version": self.__format_new_params__(self.userAgent),
             "browser_online": "true",
-            "timezone_name": self.timezone_name or "America/Chicago",
+            "tz_name": self.timezone_name or "America/Chicago",
             "is_page_visible": "true",
             "focus_state": "true",
             "is_fullscreen": "false",
+            "battery_info": "%7B%7D",
+            "app_language": "en-US",
+            "webcast_language": "en-US",
             "history_len": random.randint(0, 30),
             "language": self.language or "en",
+            "msToken": ms_token,
+            "X-Bogus": x_bogus,
         }
         return urlencode(query)
 
@@ -1771,7 +1856,7 @@ class TikTokApi:
             "browser_version": "5.0+(Macintosh%3B+Intel+Mac+OS+X+10_15_7)+AppleWebKit%2F537.36+(KHTML,+like+Gecko)+Chrome%2F92.0,.4515.159+Safari%2F537.36",
             "browser_online": "true",
             "app_language": "vi",
-            "timezone_name": "Asia/Saigon",
+            "tz_name": "Asia/Saigon",
             "is_page_visible": "true",
             "focus_state": "false",
             "is_fullscreen": "false",
@@ -1783,10 +1868,15 @@ class TikTokApi:
             "channel_id": "0",
             "msToken": ms_token,
             "X-Bogus": x_bogus,
-            # "msToken": "JrpcX8upT6ruppXEA17bMFy4Rxn8iRrF8JQGmvt8gDvAnrsB1zGHz0GrFr0IaB_Ma2PlAXgW8uk12SdfcSJ3wfOTmN3O57frVckdqbzh,HuAoeCZo0suTJ_qIv6RWfVxc8uImxLbf",
-            # "X-Bogus": "DFSzswVLtFXANafhSTYEb37TlqeS",
         }
         return urlencode(query)
+
+    def __extract_sigi_contents(self, html):
+        sigi = html.split(
+            '<script id="sigi-persisted-data">window[\'SIGI_STATE\']='
+        )[1].split("</script>")[0]
+        j_raw = sigi.split('window[\'SIGI_RETRY\']')[0]
+        return j_raw[:-1]
 
     def __extract_tag_contents(self, html):
         nonce_start = '<head nonce="'
